@@ -4,6 +4,10 @@ Bem-vindo ao Themis-back, a API Backend para análise e pesquisa de precedentes 
 
 ## Requisitos
 
+- Python 3.10+
+- MongoDB Atlas com um índice vetorial configurado
+- Chave de API da OpenAI
+
 ## Como Executar Localmente
 
 ### 1. Clone o repositório
@@ -15,49 +19,95 @@ cd themis-back
 
 ### 2. Instale as dependências
 
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure as variáveis de ambiente
+
+```bash
+cp .env.example .env
+```
+
+Preencha os valores no `.env`.
+
+### 4. Inicie o servidor
+
+```bash
+python run.py
+```
+
+O servidor sobe em `http://localhost:8000`.
+
 ## Documentação da API
 
-Com o servidor em execução, você pode acessar a documentação interativa da API em:
-- **Swagger UI**: `http://localhost:3000/docs`
+Com o servidor em execução, acesse a documentação interativa em:
 
-## Endpoints da API
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
-## Fluxo de Desenvolvimento
+## Endpoints
+
+### `POST /petition/analyze`
+
+Recebe um PDF de petição e retorna os precedentes jurídicos mais relevantes, classificados por aplicabilidade.
+
+**Request:** `multipart/form-data` com o campo `file` contendo o PDF.
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "id": "string",
+      "tipo": "string | null",
+      "orgao": "string | null",
+      "tese": "string | null",
+      "questao": "string | null",
+      "textoEmenta": "string | null",
+      "textoDecisao": "string | null",
+      "relevance_label": "aplicavel | possivelmente aplicavel | nao aplicavel",
+      "explanation": "string | null",
+      "similarity_score": "number | null"
+    }
+  ]
+}
+```
 
 ## Estrutura do Projeto
 
 ```
-prisma/
-├── migrations/       # Arquivos de migração do banco de dados
-└── schema.prisma     # Definição do schema do banco de dados
+themis/
+├── app.py              # Inicialização do FastAPI
+├── config.py           # Variáveis de ambiente e clientes (MongoDB, OpenAI)
+├── routes.py           # Definição das rotas
+├── controller.py       # Orquestração do pipeline
+├── models/
+│   └── responses.py    # Modelos de resposta (Pydantic)
+└── services/
+    ├── pdf_extractor.py # Extração de texto do PDF
+    ├── retrieval.py     # Busca vetorial no Atlas
+    └── judge.py         # Classificação dos precedentes via LLM
 
-src/
-├── alerts/           # Módulo de alertas
-├── config/           # Arquivos de configuração (database, swagger, prisma)
-├── controllers/      # Handlers de requisições HTTP
-├── factories/        # Factories de entidades
-├── middleware/       # Middleware Express (validação, tratamento de erros)
-├── repositories/     # Camada de acesso a dados (usando Prisma)
-├── routes/           # Definições de rotas
-├── services/         # Camada de lógica de negócio
-├── types/            # Interfaces e tipos TypeScript
-├── container/        # Container de injeção de dependências
-└── server.ts         # Ponto de entrada da aplicação
-
-tests/
-└── unit/            # Testes unitários
+run.py                  # Ponto de entrada (uvicorn)
+requirements.txt
+.env.example
 ```
 
-## Princípios de Arquitetura
+## Variáveis de Ambiente
 
-Este projeto segue os princípios de arquitetura limpa:
-
-- **Princípios SOLID**: Responsabilidade única, aberto/fechado, substituição de Liskov, segregação de interface, inversão de dependência
-- **Padrão Repository**: Abstrai a lógica de acesso a dados
-- **Padrão Factory**: Cria instâncias de entidades
-- **Injeção de Dependências**: Gerencia dependências e possibilita testes
-- **Camada de Serviço**: Contém a lógica de negócio
-- **Camada de Validação**: Garante a integridade dos dados
+| Variável | Descrição |
+|---|---|
+| `MONGO_URI` | URI de conexão do MongoDB Atlas |
+| `OPENAI_API_KEY` | Chave de API da OpenAI |
+| `EMBEDDING_MODEL` | Modelo de embedding (ex: `text-embedding-3-large`) |
+| `QUERY_MODEL` | Modelo para extração de queries da petição |
+| `JUDGE_MODEL` | Modelo para classificação dos precedentes |
+| `VECTOR_INDEX` | Nome do índice vetorial no Atlas |
+| `DB_NAME` | Nome do banco de dados |
+| `COLLECTION_NAME` | Nome da coleção de precedentes |
+| `CANDIDATES` | Número de candidatos recuperados antes do judge |
+| `VECTOR_SCORE_THRESHOLD` | Score mínimo de similaridade para inclusão |
 
 ## Licença
 
