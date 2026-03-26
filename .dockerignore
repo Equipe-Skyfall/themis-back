@@ -1,0 +1,11 @@
+.env
+.env.example
+.git
+__pycache__
+*.pyc
+*.pyo
+venv
+.venv
+eval_results
+Iniciais-Fatec
+comparison.json
