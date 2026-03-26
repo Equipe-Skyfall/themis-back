@@ -1,9 +1,13 @@
-from themis.config import openai_client, USELESS, JUDGE_MODEL
+from langfuse import observe
+from themis.config import USELESS, langfuse_client
 from themis.models.responses import LABEL_TO_RELEVANCE
+from themis.services.providers import ChatProvider
 
 
 
-def judge_and_rank(petition_text: str, docs: list[dict]) -> list[dict]:
+
+@observe(name="judge_and_rank")
+def judge_and_rank(petition_text: str, docs: list[dict], provider: ChatProvider) -> list[dict]:
     """
     Classify each candidate precedent for relevance to the petition using an LLM judge.
 
@@ -42,41 +46,13 @@ def judge_and_rank(petition_text: str, docs: list[dict]) -> list[dict]:
         for i, doc in enumerate(docs)
     )
 
-    # The prompt instructs the model to act as a senior STF justice, enforcing:
-    # - Merit-based classification (not surface keyword overlap)
-    # - Civil/criminal domain separation
-    # - Consistent scoring for identical teses
-    # - Length neutrality (súmulas are not penalised vs. long ementas)
-    # Output format: "<number>: <label> | <one-sentence explanation>"
-    prompt = f"""Você é um Ministro do Supremo Tribunal Federal analisando a aplicabilidade de precedentes a uma petição.
+    prompt = langfuse_client.get_prompt("judge")
 
-Compare a tese central da petição com a questão/tese de cada precedente.
-
-Regras obrigatórias:
-- Classifique como "aplicavel" APENAS se o precedente responder diretamente ao conflito jurídico de mérito da petição
-- Precedentes cíveis/administrativos NÃO se aplicam a casos criminais e vice-versa
-- Precedentes com tese idêntica ou quase idêntica DEVEM receber obrigatoriamente a mesma classificação
-- Documentos longos não têm mais peso do que súmulas curtas — avalie o mérito jurídico, não o tamanho
-
-Para cada precedente, responda APENAS com o número, a classificação e uma explicação curta no formato:
-<número>: <classificação> | <explicação curta>
-
-Classificações permitidas (use exatamente estas):
-- aplicavel: o precedente trata diretamente da mesma questão jurídica da petição e pode ser citado como fundamento
-- possivelmente aplicavel: o precedente aborda tema relacionado mas não é diretamente sobre o caso concreto
-- nao aplicavel: o precedente trata de matéria distinta e não tem utilidade para o caso
-
-Petição:
-{petition_text}
-
-Precedentes:
-{candidates_text}
-
-Classificações:"""
-
-    response = openai_client.chat.completions.create(
-        model=JUDGE_MODEL,
-        messages=[{"role": "user", "content": prompt}],
+    raw = provider.complete(
+        messages=[{"role": "user", "content": prompt.compile(
+            petition_text=petition_text,
+            candidates_text=candidates_text,
+        )}],
     )
 
     # Parse the model's response line by line.
@@ -85,7 +61,7 @@ Classificações:"""
     # Any line that doesn't match the expected structure is silently skipped.
     label_map: dict[int, str] = {}
     explanation_map: dict[int, str] = {}
-    for line in response.choices[0].message.content.strip().split("\n"):
+    for line in raw.strip().split("\n"):
         line = line.strip()
         if not line:
             continue

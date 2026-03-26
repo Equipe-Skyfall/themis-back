@@ -1,4 +1,6 @@
-from themis.config import collection, openai_client, EMBEDDING_MODEL, VECTOR_INDEX, QUERY_MODEL, VECTOR_SCORE_THRESHOLD
+from langfuse import observe
+from themis.config import collection, openai_client, langfuse_client, EMBEDDING_MODEL, VECTOR_INDEX, VECTOR_SCORE_THRESHOLD
+from themis.services.providers import ChatProvider
 
 
 def _dedup(hits: list) -> list:
@@ -18,7 +20,8 @@ def _dedup(hits: list) -> list:
     return sorted(seen.values(), key=lambda d: d["score"], reverse=True)
 
 
-def extract_legal_queries(petition_text: str) -> list[str]:
+@observe(name="extract_legal_queries")
+def extract_legal_queries(petition_text: str, provider: ChatProvider) -> list[str]:
     """
     Extract 3–5 specific legal questions from the petition using an LLM.
 
@@ -30,40 +33,20 @@ def extract_legal_queries(petition_text: str) -> list[str]:
     temperature=0 ensures deterministic, focused output — we want precise legal
     terminology, not creative paraphrases.
     """
-    response = openai_client.chat.completions.create(
-        model=QUERY_MODEL,
-        messages=[{
-            "role": "user",
-            "content": f"""Você é um especialista em direito brasileiro.
+    prompt = langfuse_client.get_prompt("query-extraction")
 
-Leia a petição abaixo e extraia de 3 a 5 questões jurídicas substantivas e específicas que precisam de precedentes.
-
-Regras:
-- Foque no tema central e concreto do caso (ex: direito específico discutido, relação jurídica em questão)
-- Evite questões genéricas como "competência do juízo", "legitimidade das partes" ou "responsabilidade civil"
-- Inclua questões procedimentais quando forem específicas e centrais ao caso, usando a terminologia técnica exata (ex: "legitimidade ativa de incapaz representado no JEFP", "competência do Juizado Especial da Fazenda Pública para menor", "incapaz assistido CPC art. 71 Lei 12.153/09")
-- Cada questão deve ser específica o suficiente para distinguir este caso de outros
-- Use linguagem direta, sem "qual é" ou "como se", prefira afirmações ou termos-chave
-- Responda APENAS com as questões, uma por linha, sem numeração ou explicação
-
-Petição:
-{petition_text}
-
-Questões jurídicas:""",
-        }],
+    content = provider.complete(
+        messages=[{"role": "user", "content": prompt.compile(petition_text=petition_text)}],
         temperature=0,
     )
-    queries = [
-        q.strip()
-        for q in response.choices[0].message.content.strip().split("\n")
-        if q.strip()
-    ]
-    return queries
+    return [q.strip() for q in content.strip().split("\n") if q.strip()]
 
 
+@observe(name="vector_search")
 def vector_search(
     petition_text: str,
     candidates: int,
+    query_provider: ChatProvider,
 ) -> list[dict]:
     """
     Retrieve the top-N candidate precedents for a petition using vector search.
@@ -80,7 +63,7 @@ def vector_search(
     recall for precedents that match specific legal sub-issues rather than the full text.
     """
     # Step 1 — extract targeted legal queries to augment the petition embedding
-    queries = extract_legal_queries(petition_text)
+    queries = extract_legal_queries(petition_text, query_provider)
     all_inputs = [petition_text] + queries
 
     # Step 2 — embed all inputs in a single batched API call to minimise latency

@@ -1,65 +1,43 @@
-import tempfile
-from pathlib import Path
+from langfuse import observe, get_client
 
-from themis.config import CANDIDATES
-from themis.models.responses import PetitionResponse, PrecedentResult
-from themis.services.pdf_extractor import extract_text
+from themis.config import CANDIDATES, PROVIDER, resolve_providers
+from themis.models.responses import EvaluationResponse, PetitionResponse, PrecedentResult
+from themis.services.pdf_extractor import extract_text_from_bytes
 from themis.services.retrieval import vector_search
 from themis.services.judge import judge_and_rank
+from themis.services.evaluator import compute_evaluation
+
+_langfuse = get_client()
 
 
+@observe(name="analyze_petition")
 def process_petition(
     pdf_bytes: bytes,
     candidates: int = CANDIDATES,
+    provider_name: str = PROVIDER,
 ) -> PetitionResponse:
-    """
-    Orchestrate the full petition analysis pipeline.
+    query_provider, judge_provider = resolve_providers(provider_name)
+    _langfuse.update_current_span(metadata={"provider": provider_name, "candidates": candidates})
 
-    Steps:
-      1. Write the PDF bytes to a temporary file and extract its text.
-      2. Run hybrid search to retrieve the top-N candidate precedents.
-      3. Pass the petition text and candidates to the LLM judge for classification.
-      4. Return the ranked results as a serialisable dict.
+    petition_text = extract_text_from_bytes(pdf_bytes)
+    retrieved = vector_search(petition_text, candidates=candidates, query_provider=query_provider)
+    ranked = judge_and_rank(petition_text, retrieved, judge_provider)
 
-    The temporary file is always cleaned up regardless of extraction success or failure.
-    """
-    # Write PDF bytes to a named temp file — pdfplumber requires a file path, not a buffer
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = tmp.name
+    return PetitionResponse(results=[PrecedentResult.from_doc(doc) for doc in ranked])
 
-    try:
-        petition_text = extract_text(tmp_path)
-    finally:
-        # Always clean up the temp file, even if extraction raises
-        Path(tmp_path).unlink(missing_ok=True)
 
-    retrieved = vector_search(petition_text, candidates=candidates)
+@observe(name="evaluate_petition")
+def evaluate_petition(
+    pdf_bytes: bytes,
+    expected_id: str,
+    candidates: int = CANDIDATES,
+    provider_name: str = PROVIDER,
+) -> EvaluationResponse:
+    query_provider, judge_provider = resolve_providers(provider_name)
+    _langfuse.update_current_span(metadata={"provider": provider_name, "expected_id": expected_id, "candidates": candidates})
 
-    # Debug output — prints each candidate's cosine similarity score
-    print(f"\n--- {len(retrieved)} candidates sent to judge ---")
-    for d in retrieved:
-        print(f"  {d['id']:<30} similarity={d.get('cosine_similarity', 0):.4f}")
-    print()
+    petition_text = extract_text_from_bytes(pdf_bytes)
+    retrieved = vector_search(petition_text, candidates=candidates, query_provider=query_provider)
+    ranked = judge_and_rank(petition_text, retrieved, judge_provider)
 
-    ranked = judge_and_rank(petition_text, retrieved)
-
-    # Pydantic handles field filtering — internal fields (vector_score, text_score,
-    # rrf score, relevance_score) are automatically excluded by the model definition.
-    return PetitionResponse(
-        results=[
-            PrecedentResult(
-                id=doc["id"],
-                tipo=doc.get("tipo"),
-                orgao=doc.get("orgao"),
-                tese=doc.get("tese"),
-                questao=doc.get("questao"),
-                textoEmenta=doc.get("textoEmenta"),
-                textoDecisao=doc.get("textoDecisao"),
-                relevance_label=doc["relevance_label"],
-                explanation=doc.get("explanation"),
-                similarity_score=round(doc.get("cosine_similarity", 0) * 100),
-            )
-            for doc in ranked
-        ]
-    )
+    return compute_evaluation(retrieved, [PrecedentResult.from_doc(doc) for doc in ranked], expected_id)
