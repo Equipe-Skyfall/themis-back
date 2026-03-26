@@ -6,8 +6,7 @@ Bem-vindo ao Themis-back, a API Backend para análise e pesquisa de precedentes 
 
 - Python 3.10+
 - MongoDB Atlas com um índice vetorial configurado
-- Chave de API da OpenAI
-- Chave de API da Groq (opcional)
+- Chave de API para um provedor de LLMs
 - Conta no Langfuse (observabilidade)
 
 ## Como Executar Localmente
@@ -56,7 +55,6 @@ O token é validado localmente usando o `JWT_SECRET` compartilhado entre os serv
 Com o servidor em execução, acesse a documentação interativa em:
 
 - **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
 
 ## Endpoints
 
@@ -93,9 +91,6 @@ Recebe um PDF de petição e retorna os precedentes jurídicos mais relevantes, 
 | `explanation` | Justificativa de uma frase |
 | `confidence_score` | Confiança do sistema na classificação (0–100): 70% peso do rótulo + 30% peso da similaridade semântica |
 
-### `POST /petition/evaluate`
-
-Executa o pipeline completo e mede a qualidade do resultado comparando com um precedente correto conhecido.
 
 **Parâmetros:**
 - `file` (multipart/form-data) — PDF da petição
@@ -103,24 +98,47 @@ Executa o pipeline completo e mede a qualidade do resultado comparando com um pr
 
 Retorna as métricas de avaliação: `retrieved`, `retrieval_rank`, `pipeline_rank`, `classification`, `hit_at_k`, `reciprocal_rank`. Consulte [EVALUATION.md](./EVALUATION.md) para a explicação detalhada de cada métrica.
 
-## Avaliação do Sistema
 
-O sistema foi avaliado sobre um conjunto de 15–17 petições rotuladas usando Mean Reciprocal Rank (MRR) como métrica principal.
+## Arquitetura
 
-| Métrica | OpenAI | Groq |
-|---|---|---|
-| MRR | 0.806 | 0.882 |
-| Retrieved rate | 100% | 100% |
-| Hit@5 | 87% | 94% |
-| Classified `aplicavel` | 100% | 97% |
+```mermaid
+graph TD
+    A[Flutter App]
 
-**MRR** mede a posição média do precedente correto nos resultados. Um MRR de 0.882 significa que, em média, o precedente correto aparece próximo à posição 1. Veja a explicação matemática completa em [EVALUATION.md](./EVALUATION.md).
+    subgraph Themis Backend
+        B[routes.py] --> C[auth.py] --> D[controller.py]
+        D -->|1 - extract text| E[pdf_extractor.py]
+        D -->|2 - vector search| F[retrieval.py]
+        D -->|3 - classify| G[judge.py]
+    end
 
-Para rodar a avaliação:
-```bash
-python evaluate_batch.py --provider openai
-python query_results.py   # consulta resultados já salvos no Langfuse
+    subgraph External Services
+        H[SLM - query extraction]
+        L[LLM - classification]
+        I[Embeddings Provider]
+        J[(MongoDB Atlas)]
+        K[Observability]
+    end
+
+    A -->|POST /petition/analyze| B
+    B -->|response| A
+
+    F -->|legal queries| H
+    F -->|embeddings| I
+    F -->|ANN search| J
+    G -->|classify candidates| L
+
+    D & F & G -.->|traces| K
 ```
+
+**Pipeline por requisição:**
+1. JWT validado localmente com o `JWT_SECRET` compartilhado — sem chamada ao serviço de autenticação
+2. Texto extraído do PDF localmente
+3. LLM extrai 3–5 queries jurídicas da petição + o sumário
+4. Queries + petição completa são embedadas em uma única chamada batch à OpenAI
+5. Cada embedding executa uma busca vetorial no MongoDB Atlas
+6. Top-N candidatos enviados ao juiz LLM para classificação
+7. Resultados ranqueados por aplicabilidade e retornados com `confidence_score`
 
 ## Estrutura do Projeto
 
@@ -135,41 +153,16 @@ themis/
 │   └── responses.py    # Modelos de resposta (Pydantic)
 └── services/
     ├── pdf_extractor.py # Extração de texto do PDF
-    ├── providers.py     # Strategy pattern para providers LLM (OpenAI, Groq)
+    ├── providers.py     # Strategy pattern para providers LLM
     ├── retrieval.py     # Busca vetorial no Atlas
     ├── judge.py         # Classificação dos precedentes via LLM
-    └── evaluator.py     # Cálculo de métricas e logging no Langfuse
+    └── evaluator.py     # Cálculo de métricas e logging 
 
 run.py                  # Ponto de entrada (uvicorn)
-evaluate_batch.py       # Avaliação em lote sobre petições rotuladas
-query_results.py        # Consulta de resultados agregados no Langfuse
 requirements.txt
 .env.example
-EVALUATION.md           # Explicação detalhada das métricas
 ```
 
-## Variáveis de Ambiente
-
-| Variável | Descrição |
-|---|---|
-| `MONGO_URI` | URI de conexão do MongoDB Atlas |
-| `OPENAI_API_KEY` | Chave de API da OpenAI |
-| `GROQ_API_KEY` | Chave de API da Groq (opcional) |
-| `EMBEDDING_MODEL` | Modelo de embedding (ex: `text-embedding-3-large`) |
-| `QUERY_MODEL` | Modelo OpenAI para extração de queries da petição |
-| `JUDGE_MODEL` | Modelo OpenAI para classificação dos precedentes |
-| `GROQ_QUERY_MODEL` | Modelo Groq para extração de queries |
-| `GROQ_JUDGE_MODEL` | Modelo Groq para classificação dos precedentes |
-| `VECTOR_INDEX` | Nome do índice vetorial no Atlas |
-| `DB_NAME` | Nome do banco de dados |
-| `COLLECTION_NAME` | Nome da coleção de precedentes |
-| `CANDIDATES` | Número de candidatos recuperados antes do judge |
-| `VECTOR_SCORE_THRESHOLD` | Score mínimo de similaridade para inclusão |
-| `PROVIDER` | Provider LLM ativo: `openai` ou `groq` |
-| `JWT_SECRET` | Segredo compartilhado com o microserviço de autenticação |
-| `LANGFUSE_PUBLIC_KEY` | Chave pública do Langfuse |
-| `LANGFUSE_SECRET_KEY` | Chave secreta do Langfuse |
-| `LANGFUSE_HOST` | Host do Langfuse (ex: `https://us.cloud.langfuse.com`) |
 
 ## Licença
 
