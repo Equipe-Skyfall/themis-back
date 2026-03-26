@@ -6,6 +6,6 @@ app = FastAPI(title="Themis", description="Brazilian legal precedent retrieval A
 app.include_router(router)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok"}
