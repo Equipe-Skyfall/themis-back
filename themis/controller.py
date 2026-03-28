@@ -21,23 +21,32 @@ def process_petition(
 
     petition_text = extract_text_from_bytes(pdf_bytes)
     retrieved = vector_search(petition_text, candidates=candidates, query_provider=query_provider)
-    ranked = judge_and_rank(petition_text, retrieved, judge_provider)
+    ranked = judge_and_rank(petition_text, retrieved, judge_provider, use_score=True)
 
     return PetitionResponse(results=[PrecedentResult.from_doc(doc) for doc in ranked])
 
 
-@observe(name="evaluate_petition")
-def evaluate_petition(
-    pdf_bytes: bytes,
-    expected_id: str,
-    candidates: int = CANDIDATES,
-    provider_name: str = PROVIDER,
-) -> EvaluationResponse:
-    query_provider, judge_provider = resolve_providers(provider_name)
-    _langfuse.update_current_span(metadata={"provider": provider_name, "expected_id": expected_id, "candidates": candidates})
+# @observe(name="evaluate_petition")
+# def evaluate_petition(
+#     pdf_bytes: bytes,
+#     expected_id: str,
+#     candidates: int = CANDIDATES,
+#     provider_name: str = PROVIDER,
+#     strategy: str = "label",
+# ) -> EvaluationResponse:
+#     query_provider, judge_provider = resolve_providers(provider_name)
+#     _langfuse.update_current_span(metadata={"provider": provider_name, "expected_id": expected_id, "candidates": candidates, "strategy": strategy})
 
-    petition_text = extract_text_from_bytes(pdf_bytes)
-    retrieved = vector_search(petition_text, candidates=candidates, query_provider=query_provider)
-    ranked = judge_and_rank(petition_text, retrieved, judge_provider)
+#     petition_text = extract_text_from_bytes(pdf_bytes)
+#     retrieved = vector_search(petition_text, candidates=candidates, query_provider=query_provider)
+#     ranked = judge_and_rank(petition_text, retrieved, judge_provider, use_score=(strategy == "score"))
 
-    return compute_evaluation(retrieved, [PrecedentResult.from_doc(doc) for doc in ranked], expected_id)
+#     _langfuse.update_current_span(metadata={
+#         "provider": provider_name,
+#         "expected_id": expected_id,
+#         "candidates": candidates,
+#         "strategy": strategy,
+#         "judge_scores": {doc["id"]: doc["relevance_score"] for doc in ranked},
+#     })
+
+#     return compute_evaluation(retrieved, [PrecedentResult.from_doc(doc) for doc in ranked], expected_id, ranked)
