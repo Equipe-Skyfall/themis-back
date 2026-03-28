@@ -9,6 +9,7 @@ def compute_evaluation(
     retrieved: list[dict],
     results: list[PrecedentResult],
     expected_id: str,
+    ranked_docs: list[dict] | None = None,
 ) -> EvaluationResponse:
     """
     Compute retrieval and pipeline metrics for a single labeled petition.
@@ -45,7 +46,12 @@ def compute_evaluation(
 
     rr = (1.0 / pipeline_rank) if pipeline_rank is not None else 0.0
 
-    _log_scores(is_retrieved, retrieval_rank, classification, hit_at_k, rr)
+    judge_score: int | None = next(
+        (d["relevance_score"] for d in (ranked_docs or []) if d["id"] == expected_id),
+        None,
+    )
+
+    _log_scores(is_retrieved, retrieval_rank, classification, hit_at_k, rr, judge_score)
 
     return EvaluationResponse(
         results=results,
@@ -54,6 +60,7 @@ def compute_evaluation(
         similarity_score=sim_score,
         pipeline_rank=pipeline_rank,
         classification=classification,
+        judge_score=judge_score,
         hit_at_k=hit_at_k,
         reciprocal_rank=rr,
     )
@@ -65,6 +72,7 @@ def _log_scores(
     classification: str | None,
     hit_at_k: dict[int, bool],
     reciprocal_rank: float,
+    judge_score: int | None = None,
 ) -> None:
     _langfuse.score_current_trace(name="retrieved", value=1.0 if is_retrieved else 0.0)
     _langfuse.score_current_trace(name="reciprocal_rank", value=reciprocal_rank)
@@ -78,3 +86,5 @@ def _log_scores(
             value=1.0 if classification == "aplicavel" else 0.5 if classification == "possivelmente aplicavel" else 0.0,
             comment=classification,
         )
+    if judge_score is not None:
+        _langfuse.score_current_trace(name="judge_score", value=float(judge_score))

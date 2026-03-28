@@ -1,11 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, computed_field
-
-_LABEL_CONFIDENCE: dict[str, float] = {
-    "aplicavel": 1.0,
-    "possivelmente aplicavel": 0.5,
-    "nao aplicavel": 0.0,
-}
+from pydantic import BaseModel
 
 RelevanceLabel = Literal["aplicavel", "possivelmente aplicavel", "nao aplicavel"]
 
@@ -28,7 +22,7 @@ class PrecedentResult(BaseModel):
     textoDecisao: str | None
     relevance_label: RelevanceLabel
     explanation: str | None
-    similarity_score: int | None = Field(exclude=True)
+    similarity_score: int | None
 
     @classmethod
     def from_doc(cls, doc: dict) -> "PrecedentResult":
@@ -44,19 +38,6 @@ class PrecedentResult(BaseModel):
             explanation=doc.get("explanation"),
             similarity_score=round(doc.get("cosine_similarity", 0) * 100),
         )
-
-    @computed_field
-    @property
-    def confidence_score(self) -> int | None:
-        """
-        0–100 confidence that this precedent is applicable.
-        Weighted combination: judge label (70%) + embedding similarity (30%).
-        Both signals agreeing raises confidence; divergence lowers it.
-        """
-        if self.similarity_score is None:
-            return None
-        label_score = _LABEL_CONFIDENCE[self.relevance_label]
-        return round((label_score * 0.7 + (self.similarity_score / 100) * 0.3) * 100)
 
 
 class PetitionResponse(BaseModel):
@@ -77,6 +58,8 @@ class EvaluationResponse(BaseModel):
     pipeline_rank: int | None
     # Label the judge assigned to the correct precedent. None if not retrieved.
     classification: RelevanceLabel | None
+    # Numeric score the judge assigned (0–10 in score mode, 0/1/2 in label mode). None if not retrieved.
+    judge_score: int | None
 
     # Hit@k: was the correct precedent in the top-k retrieval results?
     hit_at_k: dict[int, bool]
