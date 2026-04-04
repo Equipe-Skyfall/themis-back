@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: themis-back
+    runtime: docker
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: EMBEDDING_MODEL
+        sync: false
+      - key: QUERY_MODEL
+        sync: false
+      - key: JUDGE_MODEL
+        sync: false
+      - key: GROQ_QUERY_MODEL
+        sync: false
+      - key: GROQ_JUDGE_MODEL
+        sync: false
+      - key: VECTOR_INDEX
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: COLLECTION_NAME
+        sync: false
+      - key: CANDIDATES
+        sync: false
+      - key: VECTOR_SCORE_THRESHOLD
+        sync: false
+      - key: PROVIDER
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_HOST
+        sync: false
