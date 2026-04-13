@@ -23,6 +23,7 @@ async def analyze_petition(
 
     The LLM provider is configured via the PROVIDER environment variable.
     """
+    
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="File must be a PDF.")
     if candidates <= 0:
