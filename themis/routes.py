@@ -10,6 +10,7 @@ router = APIRouter(prefix="/petition", tags=["petition"])
 @router.post("/analyze", response_model=PetitionResponse)
 async def analyze_petition(
     file: UploadFile = File(...),
+    candidates: int = Form(10),
     _: dict = Depends(require_auth),
 ):
     """
@@ -24,8 +25,10 @@ async def analyze_petition(
     """
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="File must be a PDF.")
+    if candidates <= 0:
+        raise HTTPException(status_code=400, detail="'candidates' must be greater than zero.")
 
-    return process_petition(await file.read(), provider_name=PROVIDER)
+    return process_petition(await file.read(), candidates=candidates, provider_name=PROVIDER)
 
 
 # @router.post("/evaluate", response_model=EvaluationResponse)
