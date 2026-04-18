@@ -7,3 +7,6 @@ python-multipart==0.0.20
 python-dotenv
 langfuse
 PyJWT
+tenacity
+google-genai>=1.73.0
+qdrant-client>=1.13.0
