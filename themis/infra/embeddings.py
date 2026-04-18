@@ -11,6 +11,7 @@ class OpenAIEmbeddingProvider:
         self._model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        # Batched — all texts are embedded in a single API call.
         response = self._client.embeddings.create(input=texts, model=self._model)
         return [item.embedding for item in response.data]
 
@@ -21,6 +22,7 @@ class GeminiEmbeddingProvider:
         self._model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        # One call per text — Gemini SDK does not support true batch embedding in prod.
         return [
             self._client.models.embed_content(
                 model=self._model,
@@ -32,6 +34,11 @@ class GeminiEmbeddingProvider:
 
 
 def resolve_embedding_stack(provider: str):
+    """Return (embedding_provider, repository) pair for the given provider name.
+
+    OpenAI embeddings are stored in MongoDB Atlas; Gemini embeddings in Qdrant
+    (different vector dimensions require separate collections and indexes).
+    """
     if provider == "gemini":
         from qdrant_client import QdrantClient
         qdrant = QdrantClient(url=os.environ["QDRANT"], api_key=os.environ["QDRANT_API_KEY"])
@@ -41,4 +48,5 @@ def resolve_embedding_stack(provider: str):
     return OpenAIEmbeddingProvider(openai_client), MongoAtlasPrecedentRepository(collection)
 
 
+# Singletons resolved at startup from EMBEDDING_PROVIDER env var.
 embedding_provider, repository = resolve_embedding_stack(os.getenv("EMBEDDING_PROVIDER", "openai"))

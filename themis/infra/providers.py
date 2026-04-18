@@ -21,6 +21,8 @@ from themis.interfaces.providers import ChatProvider
 
 logger = logging.getLogger(__name__)
 
+# ── Retry policies ─────────────────────────────────────────────────────────────
+
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
 
 
@@ -54,11 +56,16 @@ def _is_gemini_retryable(exc: BaseException) -> bool:
     return False
 
 
+# Gemini needs more attempts and longer waits due to stricter rate limits
 _openai_retry = _make_retry(_is_openai_retryable, attempts=3, min_wait=1, max_wait=30)
 _gemini_retry = _make_retry(_is_gemini_retryable, attempts=6, min_wait=5, max_wait=60)
 
 
+# ── Provider implementations ───────────────────────────────────────────────────
+
 class OpenAICompatibleChat:
+    """Wraps any OpenAI-compatible endpoint (OpenAI, Groq, etc.)."""
+
     def __init__(self, client: OpenAI, model: str, name: str):
         self.name = name
         self._client = client
@@ -84,8 +91,9 @@ class OpenAICompatibleChat:
         return json.loads(response.choices[0].message.content)
 
 
-
 class GeminiChat:
+    """Wraps the Google AI Studio SDK for Gemini models."""
+
     name = "gemini"
 
     def __init__(self, client, model: str):
@@ -116,6 +124,10 @@ class GeminiChat:
         obj, _ = json.JSONDecoder().raw_decode(response.text.strip())
         return obj
 
+
+# ── Registry ───────────────────────────────────────────────────────────────────
+# Maps provider name → (query_provider, judge_provider).
+# Each entry is only registered if the required credentials are available.
 
 def _build_registry() -> dict[str, tuple[ChatProvider, ChatProvider]]:
     registry: dict[str, tuple[ChatProvider, ChatProvider]] = {

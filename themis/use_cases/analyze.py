@@ -2,7 +2,7 @@ import logging
 from langfuse import get_client, observe
 
 from themis.errors.exceptions import EmptyPetitionError
-from themis.infra.settings import CANDIDATES, USE_JSON_JUDGE
+from themis.infra.settings import CANDIDATES, JUDGE_PROMPT, QUERY_PROMPT, USE_JSON_JUDGE
 from themis.interfaces.embeddings import EmbeddingProvider
 from themis.interfaces.prompts import PromptProvider
 from themis.interfaces.providers import ChatProvider
@@ -51,12 +51,14 @@ class PetitionAnalyzer:
             repository=self._repository,
             embedding_provider=self._embedding_provider,
             prompt_provider=self._prompts,
+            query_prompt_name=QUERY_PROMPT,
         )
         logger.info("Vector search returned %d candidates. Running judge.", len(retrieved))
 
         ranked = judge_and_rank(
             petition_text, retrieved, self._judge_provider,
             prompt_provider=self._prompts, use_score=True, use_json=USE_JSON_JUDGE,
+            judge_prompt_name=JUDGE_PROMPT,
         )
         logger.info("Judge ranked %d precedents.", len(ranked))
 
