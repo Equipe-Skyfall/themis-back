@@ -2,7 +2,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from themis.config import JWT_SECRET
+from themis.infra.settings import JWT_SECRET
 
 _bearer = HTTPBearer()
 
