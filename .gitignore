@@ -34,5 +34,7 @@ scripts/meta_harness/traces/
 scripts/meta_harness/metrics.json
 scripts/meta_harness/dataset.json
 scripts/meta_harness/prompts/
+scripts/meta_harness/config.py
 prompts/
 .claude/ 
+*.ipynb

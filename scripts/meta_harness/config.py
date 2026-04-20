@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 @dataclass
 class HarnessConfig:
     # ── Retrieval ──────────────────────────────────────────────────
-    candidates: int = 5
+    candidates: int = 15
     vector_score_threshold: float = 0.70
     query_extraction_temperature: float = 0.0
     results_per_embedding_multiplier: int = 4  # limit = candidates * this
@@ -22,9 +22,9 @@ class HarnessConfig:
     judge_temperature: float = 1.0
     petition_text_limit: int = 2000   # chars of petition sent to the judge
     field_limits: dict[str, int] = field(default_factory=lambda: {
-        "tese": 400,
-        "questao": 200,
-        "textoEmenta": 400,
+        "tese": 600,
+        "questao": 600,
+        "textoEmenta": 600,
     })
 
     # ── Prompt names (mapped to files in themis/prompts/) ─────────
@@ -35,4 +35,4 @@ class HarnessConfig:
     use_queries: bool = True  # False → search with petition text only (no query extraction)
 
     # ── Rate limiting ──────────────────────────────────────────────
-    delay_between_petitions: float = 60  # seconds to wait between petitions
+    delay_between_petitions: float = 5  # seconds to wait between petitions

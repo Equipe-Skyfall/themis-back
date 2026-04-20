@@ -73,7 +73,7 @@ class Judgment:
         if len(index_and_rest) != 2:
             return None
         try:
-            index = int(index_and_rest[0].strip())
+            index = int(index_and_rest[0].strip().strip("[]"))
         except ValueError:
             return None
         value_and_explanation = index_and_rest[1].strip().split("|", 1)

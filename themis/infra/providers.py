@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from langfuse.openai import OpenAI
-from openai import APIStatusError, APITimeoutError
+from openai import APIStatusError, APITimeoutError, BadRequestError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from themis.infra.clients import gemini_client, openai_client
@@ -82,9 +82,23 @@ class OpenAICompatibleChat:
 
     @_openai_retry
     def complete_json(self, messages: list[dict], temperature: float = 1.0, response_schema: Any = None) -> Any:
+        if response_schema is not None:
+            try:
+                response = self._client.beta.chat.completions.parse(
+                    model=self._model,
+                    messages=messages,
+                    temperature=temperature,
+                    response_format=response_schema,
+                )
+                return json.loads(response.choices[0].message.content)
+            except BadRequestError:
+                logger.info("Model %s does not support json_schema, falling back to json_object.", self._model)
+        patched = list(messages)
+        if not any("json" in m.get("content", "").lower() for m in patched):
+            patched.insert(0, {"role": "system", "content": "Respond in json format."})
         response = self._client.chat.completions.create(
             model=self._model,
-            messages=messages,
+            messages=patched,
             temperature=temperature,
             response_format={"type": "json_object"},
         )

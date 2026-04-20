@@ -84,6 +84,7 @@ class PetitionTrace:
     retrieved_count: int
     retrieved_ids: list[str]
     retrieved_scores: list[float]
+    retrieval_sources: dict[str, str]  # precedent_id → "petition_text" | "query_N"
 
     # Judge stage
     candidates_text_sent: str
@@ -126,8 +127,8 @@ def _retrieve(
     embedding_provider,
     prompt_provider: PromptProvider,
     cfg: HarnessConfig,
-) -> tuple[list[str], list[RetrievedPrecedent]]:
-    """Run retrieval and return (extracted_queries, retrieved_precedents)."""
+) -> tuple[list[str], list[RetrievedPrecedent], dict[str, str]]:
+    """Run retrieval and return (extracted_queries, retrieved_precedents, source_map)."""
     if cfg.use_queries:
         queries = extract_legal_queries(
             petition_text, query_provider, prompt_provider,
@@ -136,19 +137,30 @@ def _retrieve(
         )
     else:
         queries = []
+
+    sources = ["petition_text"] + [f"query_{i}" for i in range(len(queries))]
     embeddings = embedding_provider.embed([petition_text] + queries)
 
     limit = cfg.candidates * cfg.results_per_embedding_multiplier
     with ThreadPoolExecutor(max_workers=len(embeddings)) as pool:
-        futures = [pool.submit(repository.search, emb, limit) for emb in embeddings]
+        futures = {pool.submit(repository.search, emb, limit): src for emb, src in zip(embeddings, sources)}
+        # Track best source per precedent (highest similarity wins)
+        source_map: dict[str, tuple[float, str]] = {}
         hits: list[RetrievedPrecedent] = []
         for future in as_completed(futures):
-            hits.extend(future.result())
+            src = futures[future]
+            for hit in future.result():
+                hits.append(hit)
+                prev_score, _ = source_map.get(hit.id, (-1.0, ""))
+                if hit.cosine_similarity > prev_score:
+                    source_map[hit.id] = (hit.cosine_similarity, src)
+
+    best_source = {pid: src for pid, (_, src) in source_map.items()}
 
     return queries, [
         hit for hit in _dedup(hits)
         if hit.cosine_similarity >= cfg.vector_score_threshold
-    ][:cfg.candidates]
+    ][:cfg.candidates], best_source
 
 
 def _judge(
@@ -173,6 +185,7 @@ def _judge(
     if cfg.use_json:
         from themis.services.judge import _JUDGE_SCHEMA
         data = judge_provider.complete_json(messages, temperature=cfg.judge_temperature, response_schema=_JUDGE_SCHEMA)
+        logger.info("Judge raw JSON: %s", data)
         raw_response = json.dumps(data, ensure_ascii=False)
         judgments = _parse_json_response(data, len(candidates))
     else:
@@ -211,7 +224,7 @@ def evaluate_petition(
 
     petition_text = extract_text(pdf_path.read_bytes())
 
-    queries, retrieved = _retrieve(
+    queries, retrieved, source_map = _retrieve(
         petition_text, query_provider, repository,
         embedding_provider, prompt_provider, cfg,
     )
@@ -248,6 +261,7 @@ def evaluate_petition(
         retrieved_count=len(retrieved),
         retrieved_ids=[p.id for p in sorted_by_sim],
         retrieved_scores=[round(p.cosine_similarity, 4) for p in sorted_by_sim],
+        retrieval_sources={p.id: source_map.get(p.id, "unknown") for p in sorted_by_sim},
         candidates_text_sent=candidates_text,
         judge_raw_response=judge_raw,
         ranked_results=[
