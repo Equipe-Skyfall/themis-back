@@ -56,7 +56,7 @@ def extract_legal_queries(
         temperature=temperature,
     )
     queries = [q.strip() for q in content.strip().split("\n") if q.strip()]
-    logger.info("Extracted %d legal queries (provider: %s).", len(queries), provider.name)
+    logger.info("Extracted %d legal queries (provider: %s): %s", len(queries), provider.name, queries)
     return queries
 
 
@@ -108,5 +108,11 @@ def vector_search(
 
     if not results:
         logger.warning("Vector search returned no candidates above threshold %.2f.", score_threshold)
+    else:
+        logger.info(
+            "Retrieved %d candidates: %s",
+            len(results),
+            [(hit.id, round(hit.cosine_similarity, 3)) for hit in results],
+        )
 
     return results

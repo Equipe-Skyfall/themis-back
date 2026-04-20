@@ -14,7 +14,11 @@ class _JudgmentEntry(BaseModel):
     explanation: str
 
 
-_JUDGE_SCHEMA = list[_JudgmentEntry]
+class _JudgeResponse(BaseModel):
+    judgments: list[_JudgmentEntry]
+
+
+_JUDGE_SCHEMA = _JudgeResponse
 
 DEFAULT_FIELD_LIMITS: dict[str, int] = {
     "tese": 1000,
@@ -100,7 +104,10 @@ def _parse_json_response(data: dict, candidate_count: int) -> dict[int, Judgment
     Expected format: {"judgments": [{"index": 1, "score": 8, "explanation": "..."}]}
     """
     judgments: dict[int, Judgment] = {}
-    entries = data if isinstance(data, list) else data.get("judgments", [])
+    if isinstance(data, list):
+        entries = data
+    else:
+        entries = next((v for v in data.values() if isinstance(v, list)), [])
     for entry in entries:
         if isinstance(entry, str):
             parsed = Judgment.from_score_line(entry)
@@ -116,7 +123,7 @@ def _parse_json_response(data: dict, candidate_count: int) -> dict[int, Judgment
                 index, judgment = parsed
                 judgments[index] = judgment
             continue
-        index = entry.get("index") or entry.get("numero") or entry.get("número")
+        index = entry.get("index") or entry.get("id") or entry.get("numero") or entry.get("número")
         score = entry.get("score")
         explanation = entry.get("explanation") or entry.get("explicacao") or entry.get("explicação")
         if index is None or score is None:
@@ -184,9 +191,11 @@ def judge_and_rank(
 
     if use_json:
         data = provider.complete_json(messages, temperature=temperature, response_schema=_JUDGE_SCHEMA)
+        logger.info("Judge raw response (json): %s", data)
         judgments = _parse_json_response(data, len(candidates))
     else:
         llm_response = provider.complete(messages, temperature=temperature)
+        logger.info("Judge raw response (text): %s", llm_response)
         judgments = _parse_text_response(llm_response, use_score, provider.name, len(candidates))
 
     return _rank_candidates(candidates, judgments)
