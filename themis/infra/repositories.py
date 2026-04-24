@@ -1,5 +1,44 @@
+import gridfs
+from datetime import datetime, timezone
+
 from themis.infra.settings import ANN_CANDIDATES, VECTOR_INDEX
 from themis.models.domain import RetrievedPrecedent
+
+
+class HistoryRepository:
+    def __init__(self, collection, pdf_bucket: gridfs.GridFS):
+        self._collection = collection
+        self._bucket = pdf_bucket
+
+    def save(
+        self,
+        user_id: str,
+        filename: str,
+        pdf_bytes: bytes,
+        summary: str,
+        results: list[dict],
+    ) -> str:
+        file_id = self._bucket.put(
+            pdf_bytes,
+            filename=filename,
+            content_type="application/pdf",
+        )
+        inserted = self._collection.insert_one({
+            "userId": user_id,
+            "filename": filename,
+            "timestamp": datetime.now(timezone.utc),
+            "pdf_file_id": file_id,
+            "summary": summary,
+            "results": results,
+        })
+        return str(inserted.inserted_id)
+
+    def find_by_user(self, user_id: str) -> list[dict]:
+        return list(
+            self._collection
+            .find({"userId": user_id}, {"pdf_file_id": 0})
+            .sort("timestamp", -1)
+        )
 
 
 class QdrantPrecedentRepository:

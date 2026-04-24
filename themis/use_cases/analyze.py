@@ -15,6 +15,13 @@ from themis.services.retrieval import vector_search
 logger = logging.getLogger(__name__)
 _langfuse = get_client()
 
+_SUMMARY_PROMPT = (
+    "Você é um assistente jurídico. Resuma a petição a seguir em 3 a 5 frases, "
+    "destacando o tipo de ação, as partes envolvidas e o pedido principal.\n\n"
+    "PETIÇÃO:\n{text}"
+)
+_SUMMARY_MAX_CHARS = 8000
+
 
 class PetitionAnalyzer:
     def __init__(
@@ -24,15 +31,27 @@ class PetitionAnalyzer:
         repository: PrecedentRepository,
         embedding_provider: EmbeddingProvider,
         prompt_provider: PromptProvider,
+        history_repository=None,
+        gemini_client=None,
+        gemini_model: str = "gemini-2.0-flash",
     ):
         self._query_provider = query_provider
         self._judge_provider = judge_provider
         self._repository = repository
         self._embedding_provider = embedding_provider
         self._prompts = prompt_provider
+        self._history_repo = history_repository
+        self._gemini = gemini_client
+        self._gemini_model = gemini_model
 
     @observe(name="analyze_petition")
-    def analyze(self, pdf_bytes: bytes, candidates: int = CANDIDATES) -> PetitionResponse:
+    def analyze(
+        self,
+        pdf_bytes: bytes,
+        candidates: int = CANDIDATES,
+        user_id: str | None = None,
+        filename: str | None = None,
+    ) -> PetitionResponse:
         _langfuse.update_current_span(metadata={
             "provider": self._query_provider.name,
             "candidates": candidates,
@@ -62,4 +81,36 @@ class PetitionAnalyzer:
         )
         logger.info("Judge ranked %d precedents.", len(ranked))
 
-        return PetitionResponse(results=[PrecedentResult.from_domain(precedent) for precedent in ranked])
+        try:
+            summary = self._summarize(petition_text)
+        except Exception:
+            logger.exception("Failed to generate petition summary.")
+            summary = ""
+        response = PetitionResponse(
+            results=[PrecedentResult.from_domain(p) for p in ranked],
+            summary=summary or None,
+        )
+
+        if self._history_repo and user_id:
+            try:
+                self._history_repo.save(
+                    user_id=user_id,
+                    filename=filename or "unknown.pdf",
+                    pdf_bytes=pdf_bytes,
+                    summary=summary,
+                    results=[r.model_dump() for r in response.results],
+                )
+                logger.info("Saved analysis history for user %s.", user_id)
+            except Exception:
+                logger.exception("Failed to save analysis history for user %s.", user_id)
+
+        return response
+
+    def _summarize(self, text: str) -> str:
+        if not self._gemini:
+            return ""
+        response = self._gemini.models.generate_content(
+            model=self._gemini_model,
+            contents=_SUMMARY_PROMPT.format(text=text[:_SUMMARY_MAX_CHARS]),
+        )
+        return response.text

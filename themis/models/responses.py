@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from themis.models.domain import RankedPrecedent, RelevanceLabel
@@ -35,3 +37,26 @@ class PrecedentResult(BaseModel):
 
 class PetitionResponse(BaseModel):
     results: list[PrecedentResult]
+    summary: str | None = None
+
+
+class HistoryEntry(BaseModel):
+    id: str
+    filename: str
+    timestamp: datetime
+    summary: str | None
+    results: list[PrecedentResult]
+
+    @classmethod
+    def from_document(cls, doc: dict) -> "HistoryEntry":
+        return cls(
+            id=str(doc["_id"]),
+            filename=doc["filename"],
+            timestamp=doc["timestamp"],
+            summary=doc.get("summary"),
+            results=doc.get("results", []),
+        )
+
+
+class HistoryListResponse(BaseModel):
+    history: list[HistoryEntry]
