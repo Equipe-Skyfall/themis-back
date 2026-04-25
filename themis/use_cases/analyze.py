@@ -32,8 +32,7 @@ class PetitionAnalyzer:
         embedding_provider: EmbeddingProvider,
         prompt_provider: PromptProvider,
         history_repository=None,
-        gemini_client=None,
-        gemini_model: str = "gemini-2.0-flash",
+        summary_provider: ChatProvider | None = None,
     ):
         self._query_provider = query_provider
         self._judge_provider = judge_provider
@@ -41,8 +40,7 @@ class PetitionAnalyzer:
         self._embedding_provider = embedding_provider
         self._prompts = prompt_provider
         self._history_repo = history_repository
-        self._gemini = gemini_client
-        self._gemini_model = gemini_model
+        self._summary_provider = summary_provider
 
     @observe(name="analyze_petition")
     def analyze(
@@ -107,10 +105,7 @@ class PetitionAnalyzer:
         return response
 
     def _summarize(self, text: str) -> str:
-        if not self._gemini:
+        if not self._summary_provider:
             return ""
-        response = self._gemini.models.generate_content(
-            model=self._gemini_model,
-            contents=_SUMMARY_PROMPT.format(text=text[:_SUMMARY_MAX_CHARS]),
-        )
-        return response.text
+        messages = [{"role": "user", "content": _SUMMARY_PROMPT.format(text=text[:_SUMMARY_MAX_CHARS])}]
+        return self._summary_provider.complete(messages, temperature=0.3)
