@@ -16,8 +16,19 @@ logger = logging.getLogger(__name__)
 _langfuse = get_client()
 
 _SUMMARY_PROMPT = (
-    "Você é um assistente jurídico. Resuma a petição a seguir em 3 a 5 frases, "
-    "destacando o tipo de ação, as partes envolvidas e o pedido principal. Retorne somente o resumo, sem nenhum comentários. E omita informações de terceiros, retorne somente informações necessárias para informar sobre o que a petição se refere.\n\n"
+    "Você é um analista jurídico sênior especializado em direito brasileiro. "
+    "Analise a petição abaixo e produza um resumo estruturado e objetivo seguindo estas diretrizes:\n\n"
+    "1. Identifique o TIPO DE AÇÃO (ex.: Ação Declaratória, Mandado de Segurança, Ação Civil Pública, etc.).\n"
+    "2. Descreva de forma genérica as PARTES envolvidas usando apenas seus papéis processuais "
+    "(ex.: 'o autor', 'a ré', 'a empresa reclamada') — nunca mencione nomes, CPFs, CNPJs ou qualquer dado pessoal.\n"
+    "3. Exponha o FUNDAMENTO JURÍDICO central invocado (dispositivos legais, princípios constitucionais ou teses).\n"
+    "4. Descreva o PEDIDO PRINCIPAL e eventuais pedidos acessórios relevantes (tutela de urgência, danos morais, etc.).\n"
+    "5. Indique o CONTEXTO FÁTICO essencial que motivou a ação, em no máximo duas frases.\n\n"
+    "Regras de formato:\n"
+    "- Escreva entre 4 e 6 frases corridas, em um único parágrafo coeso.\n"
+    "- Use linguagem técnica porém acessível, sem jargões desnecessários.\n"
+    "- Não inclua saudações, comentários, títulos, bullet points ou qualquer texto além do resumo.\n"
+    "- Omita informações de terceiros, testemunhas ou dados que não sejam essenciais para compreender o objeto da ação.\n\n"
     "PETIÇÃO:\n{text}"
 )
 _SUMMARY_MAX_CHARS = 8000
