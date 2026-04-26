@@ -1,5 +1,6 @@
 # Module-level singletons — instantiated once at import time and shared across the app.
 
+import gridfs
 from langfuse import get_client
 from langfuse.openai import OpenAI
 from pymongo import MongoClient
@@ -11,7 +12,10 @@ from themis.infra.settings import (
 )
 
 mongo_client = MongoClient(MONGO_URI)
-collection = mongo_client[DB_NAME][COLLECTION_NAME]
+_db = mongo_client[DB_NAME]
+collection = _db[COLLECTION_NAME]
+history_collection = _db["user_search_history"]
+pdf_bucket = gridfs.GridFS(_db, collection="petition_files")
 
 # langfuse.openai.OpenAI wraps the standard OpenAI client to auto-trace all calls.
 openai_client = OpenAI(api_key=OPENAI_API_KEY)

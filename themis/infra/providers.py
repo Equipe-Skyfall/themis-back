@@ -174,3 +174,9 @@ def resolve_providers(provider_name: str) -> tuple[ChatProvider, ChatProvider]:
     if provider_name not in _REGISTRY:
         raise ValueError(f"Unknown provider '{provider_name}'. Available: {', '.join(_REGISTRY)}")
     return _REGISTRY[provider_name]
+
+
+def get_summary_provider() -> ChatProvider | None:
+    if "groq" not in _REGISTRY:
+        return None
+    return _REGISTRY["groq"][0]
