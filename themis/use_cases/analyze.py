@@ -17,7 +17,7 @@ _langfuse = get_client()
 
 _SUMMARY_PROMPT = (
     "Você é um assistente jurídico. Resuma a petição a seguir em 3 a 5 frases, "
-    "destacando o tipo de ação, as partes envolvidas e o pedido principal. Retorne somente o resumo, sem nenhum comentário.\n\n"
+    "destacando o tipo de ação, as partes envolvidas e o pedido principal. Retorne somente o resumo, sem nenhum comentários. E omita informações de terceiros, retorne somente informações necessárias para informar sobre o que a petição se refere.\n\n"
     "PETIÇÃO:\n{text}"
 )
 _SUMMARY_MAX_CHARS = 8000
