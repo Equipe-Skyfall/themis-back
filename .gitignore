@@ -21,4 +21,20 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-.claude
+
+# Notebooks / scratch
+eda.*
+
+# Data files
+precedentes_clean.json
+petitions/
+
+# Meta-harness outputs (generated at runtime)
+scripts/meta_harness/traces/
+scripts/meta_harness/metrics.json
+scripts/meta_harness/dataset.json
+scripts/meta_harness/prompts/
+scripts/meta_harness/config.py
+prompts/
+.claude/ 
+*.ipynb
