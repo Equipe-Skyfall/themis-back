@@ -1,13 +1,28 @@
+import asyncio
+import logging
+import uuid
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from themis.api.auth import require_auth
-from themis.api.dependencies import get_analyzer, get_history_repo
+from themis.api.dependencies import get_analyzer, get_case_analyzer, get_history_repo
 from themis.infra.repositories import HistoryRepository
-from themis.models.responses import HistoryEntry, HistoryListResponse, PetitionResponse
+from themis.models.responses import (
+    CaseAnalysisResponse,
+    HistoryEntry,
+    HistoryListResponse,
+    PetitionResponse,
+)
 from themis.use_cases.analyze import PetitionAnalyzer
+from themis.use_cases.case_analysis import CaseAnalyzer
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/petition", tags=["petition"])
+
+# In-memory job store for case analysis
+_jobs: dict[str, dict] = {}
 
 
 @router.post("/analyze", response_model=PetitionResponse)
@@ -32,6 +47,75 @@ async def analyze_petition_route(
         user_id=token.get("userId"),
         filename=file.filename,
     )
+
+
+@router.post("/analyze-case")
+async def analyze_case_route(
+    file: UploadFile = File(...),
+    token: dict = Depends(require_auth),
+    case_analyzer: Annotated[CaseAnalyzer, Depends(get_case_analyzer)] = None,
+):
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="File must be a PDF.")
+
+    job_id = uuid.uuid4().hex
+    pdf_bytes = await file.read()
+    user_id = token.get("userId")
+    filename = file.filename
+
+    _jobs[job_id] = {"status": "processing"}
+
+    async def _run():
+        try:
+            result = await case_analyzer.analyze(
+                pdf_bytes, user_id=user_id, filename=filename,
+            )
+            _jobs[job_id] = {
+                "status": "done",
+                "result": CaseAnalysisResponse.from_domain(result).model_dump(),
+            }
+        except Exception:
+            logger.exception("Case analysis job %s failed.", job_id)
+            _jobs[job_id] = {"status": "error", "detail": "Analysis failed."}
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id}
+
+
+@router.get("/case-status/{job_id}")
+async def case_status_route(
+    job_id: str,
+    token: dict = Depends(require_auth),
+):
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job
+
+
+@router.post("/analyze-case-test")
+async def analyze_case_test_route(
+    file: UploadFile = File(...),
+    token: dict = Depends(require_auth),
+):
+    job_id = f"test-{uuid.uuid4().hex}"
+    _jobs[job_id] = {"status": "processing"}
+
+    async def _mock():
+        await asyncio.sleep(15)
+        from themis.api.dependencies import get_case_analysis_repo
+        case_repo = get_case_analysis_repo()
+        doc = case_repo.find_random()
+        if not doc:
+            _jobs[job_id] = {"status": "error", "detail": "No case analyses found."}
+            return
+        doc.pop("_id", None)
+        doc.pop("userId", None)
+        doc.pop("timestamp", None)
+        _jobs[job_id] = {"status": "done", "result": doc}
+
+    asyncio.create_task(_mock())
+    return {"job_id": job_id}
 
 
 @router.get("/history", response_model=HistoryListResponse)
