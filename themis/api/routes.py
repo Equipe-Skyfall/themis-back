@@ -3,19 +3,26 @@ import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from themis.api.auth import require_auth
-from themis.api.dependencies import get_analyzer, get_case_analyzer, get_history_repo
+from themis.api.dependencies import get_analyzer, get_case_analyzer, get_history_repo, get_petition_generator
 from themis.infra.repositories import HistoryRepository
 from themis.models.responses import (
     CaseAnalysisResponse,
+    GeneratedPetitionResponse,
     HistoryEntry,
     HistoryListResponse,
     PetitionResponse,
+    RegeneratePetitionRequest,
+    RetrievedPrecedentResult,
+    SearchPrecedentsRequest,
+    SearchPrecedentsResponse,
 )
+from themis.services.pdf import extract_text
 from themis.use_cases.analyze import PetitionAnalyzer
 from themis.use_cases.case_analysis import CaseAnalyzer
+from themis.use_cases.petition_generation import PetitionGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +122,89 @@ async def analyze_case_test_route(
         _jobs[job_id] = {"status": "done", "result": doc}
 
     asyncio.create_task(_mock())
+    return {"job_id": job_id}
+
+
+@router.post("/generate")
+async def generate_petition_route(
+    case_description: str = Form(...),
+    orgao_filter: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    token: dict = Depends(require_auth),
+    generator: Annotated[PetitionGenerator, Depends(get_petition_generator)] = None,
+):
+    # Build full case description from text + optional PDF
+    full_description = case_description
+    if file:
+        if file.content_type not in ("application/pdf", "application/octet-stream"):
+            raise HTTPException(status_code=400, detail="File must be a PDF.")
+        pdf_bytes = await file.read()
+        pdf_text = extract_text(pdf_bytes)
+        if pdf_text:
+            full_description = f"{case_description}\n\nDOCUMENTO ANEXADO:\n{pdf_text}"
+
+    job_id = uuid.uuid4().hex
+    user_id = token.get("userId")
+    _jobs[job_id] = {"status": "processing"}
+
+    async def _run():
+        try:
+            result = await generator.generate(
+                case_description=full_description,
+                user_id=user_id,
+                orgao_filter=orgao_filter,
+            )
+            _jobs[job_id] = {
+                "status": "done",
+                "result": GeneratedPetitionResponse.from_domain(result).model_dump(),
+            }
+        except Exception:
+            logger.exception("Petition generation job %s failed.", job_id)
+            _jobs[job_id] = {"status": "error", "detail": "Generation failed."}
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id}
+
+
+@router.post("/search-precedents", response_model=SearchPrecedentsResponse)
+async def search_precedents_route(
+    body: SearchPrecedentsRequest,
+    token: dict = Depends(require_auth),
+    generator: Annotated[PetitionGenerator, Depends(get_petition_generator)] = None,
+):
+    retrieved = await asyncio.to_thread(generator.search_precedents, body.query)
+    return SearchPrecedentsResponse(
+        results=[RetrievedPrecedentResult.from_domain(p) for p in retrieved],
+    )
+
+
+@router.post("/regenerate")
+async def regenerate_petition_route(
+    body: RegeneratePetitionRequest,
+    token: dict = Depends(require_auth),
+    generator: Annotated[PetitionGenerator, Depends(get_petition_generator)] = None,
+):
+    job_id = uuid.uuid4().hex
+    user_id = token.get("userId")
+    _jobs[job_id] = {"status": "processing"}
+
+    async def _run():
+        try:
+            result = await generator.regenerate(
+                case_description=body.case_description,
+                user_id=user_id,
+                instructions=body.instructions,
+                petition_text=body.petition_text,
+            )
+            _jobs[job_id] = {
+                "status": "done",
+                "result": GeneratedPetitionResponse.from_domain(result).model_dump(),
+            }
+        except Exception:
+            logger.exception("Petition regeneration job %s failed.", job_id)
+            _jobs[job_id] = {"status": "error", "detail": "Regeneration failed."}
+
+    asyncio.create_task(_run())
     return {"job_id": job_id}
 
 

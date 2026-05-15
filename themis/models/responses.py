@@ -2,7 +2,10 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from themis.models.domain import CaseAnalysisResult, DocumentSegment, RankedPrecedent, RelevanceLabel
+from themis.models.domain import (
+    CaseAnalysisResult, DocumentSegment, GeneratedPetition,
+    RankedPrecedent, RelevanceLabel, RetrievedPrecedent,
+)
 
 
 class PrecedentResult(BaseModel):
@@ -101,5 +104,58 @@ class CaseAnalysisResponse(BaseModel):
             petition_summary=result.petition_summary,
             precedent_results=[PrecedentResult.from_domain(p) for p in result.precedents],
             minuta=result.minuta,
+            weak_precedents=result.weak_precedents,
+        )
+
+
+# ── Petition generation ──────────────────────────────────────────────────────
+
+
+class GeneratePetitionRequest(BaseModel):
+    case_description: str
+    orgao_filter: str | None = None
+
+
+class SearchPrecedentsRequest(BaseModel):
+    query: str
+
+
+class RegeneratePetitionRequest(BaseModel):
+    case_description: str
+    petition_text: str | None = None
+    instructions: str | None = None
+
+
+class RetrievedPrecedentResult(BaseModel):
+    id: str
+    tipo: str | None
+    orgao: str | None
+    tese: str | None
+    textoEmenta: str | None
+    similarity_score: int
+
+    @classmethod
+    def from_domain(cls, p: RetrievedPrecedent) -> "RetrievedPrecedentResult":
+        return cls(
+            id=p.id, tipo=p.tipo, orgao=p.orgao,
+            tese=p.tese, textoEmenta=p.textoEmenta,
+            similarity_score=round(p.cosine_similarity * 100),
+        )
+
+
+class SearchPrecedentsResponse(BaseModel):
+    results: list[RetrievedPrecedentResult]
+
+
+class GeneratedPetitionResponse(BaseModel):
+    petition_text: str
+    precedent_results: list[PrecedentResult] = []
+    weak_precedents: bool = False
+
+    @classmethod
+    def from_domain(cls, result: GeneratedPetition) -> "GeneratedPetitionResponse":
+        return cls(
+            petition_text=result.petition_text,
+            precedent_results=[PrecedentResult.from_domain(p) for p in result.precedents],
             weak_precedents=result.weak_precedents,
         )

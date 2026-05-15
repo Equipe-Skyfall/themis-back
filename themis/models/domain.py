@@ -138,3 +138,14 @@ class CaseAnalysisResult:
     precedents: list[RankedPrecedent] = field(default_factory=list)
     minuta: str | None = None
     weak_precedents: bool = False
+
+
+# ── Petition generation ──────────────────────────────────────────────────────
+
+
+@dataclass(kw_only=True)
+class GeneratedPetition:
+    case_description: str
+    petition_text: str
+    precedents: list[RankedPrecedent] = field(default_factory=list)
+    weak_precedents: bool = False
