@@ -159,3 +159,29 @@ class GeneratedPetitionResponse(BaseModel):
             precedent_results=[PrecedentResult.from_domain(p) for p in result.precedents],
             weak_precedents=result.weak_precedents,
         )
+
+
+class GeneratedPetitionHistoryEntry(BaseModel):
+    id: str
+    case_description: str
+    petition_text: str
+    precedent_results: list[dict] = []
+    weak_precedents: bool = False
+    instructions: str | None = None
+    timestamp: datetime
+
+    @classmethod
+    def from_document(cls, doc: dict) -> "GeneratedPetitionHistoryEntry":
+        return cls(
+            id=str(doc["_id"]),
+            case_description=doc.get("case_description", ""),
+            petition_text=doc.get("petition_text", ""),
+            precedent_results=doc.get("precedent_results", []),
+            weak_precedents=doc.get("weak_precedents", False),
+            instructions=doc.get("instructions"),
+            timestamp=doc["timestamp"],
+        )
+
+
+class GeneratedPetitionHistoryResponse(BaseModel):
+    history: list[GeneratedPetitionHistoryEntry]

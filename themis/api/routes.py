@@ -6,10 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from themis.api.auth import require_auth
-from themis.api.dependencies import get_analyzer, get_case_analyzer, get_history_repo, get_petition_generator
+from themis.api.dependencies import get_analyzer, get_case_analyzer, get_generated_petition_repo, get_history_repo, get_petition_generator
 from themis.infra.repositories import HistoryRepository
 from themis.models.responses import (
     CaseAnalysisResponse,
+    GeneratedPetitionHistoryEntry,
+    GeneratedPetitionHistoryResponse,
     GeneratedPetitionResponse,
     HistoryEntry,
     HistoryListResponse,
@@ -206,6 +208,18 @@ async def regenerate_petition_route(
 
     asyncio.create_task(_run())
     return {"job_id": job_id}
+
+
+@router.get("/generated-history", response_model=GeneratedPetitionHistoryResponse)
+async def get_generated_petition_history_route(
+    token: dict = Depends(require_auth),
+    repo: "GeneratedPetitionRepository" = Depends(get_generated_petition_repo),
+):
+    """Return all past generated petitions for the authenticated user, newest first."""
+    docs = repo.find_by_user(token.get("userId"))
+    return GeneratedPetitionHistoryResponse(
+        history=[GeneratedPetitionHistoryEntry.from_document(d) for d in docs],
+    )
 
 
 @router.get("/history", response_model=HistoryListResponse)
