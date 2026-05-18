@@ -46,6 +46,7 @@ JUDGE_MODEL = os.environ["JUDGE_MODEL"]
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_QUERY_MODEL = os.getenv("GROQ_QUERY_MODEL", "llama-3.1-8b-instant")
 GROQ_JUDGE_MODEL = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+GROQ_GENERATION_MODEL = os.getenv("GROQ_GENERATION_MODEL", "llama-3.3-70b-versatile")
 
 # ── Embedding provider ─────────────────────────────────────────────────────────
 # EMBEDDING_MODEL is used by OpenAI; Gemini model is controlled separately.

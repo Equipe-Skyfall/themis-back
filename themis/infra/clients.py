@@ -18,6 +18,7 @@ _db = mongo_client[DB_NAME]
 collection = _db[COLLECTION_NAME]
 history_collection = _db["user_search_history"]
 case_analysis_collection = _db["case_analysis_history"]
+generated_petitions_collection = _db["generated_petitions"]
 pdf_bucket = gridfs.GridFS(_db, collection="petition_files")
 
 # langfuse.openai.OpenAI wraps the standard OpenAI client to auto-trace all calls.
