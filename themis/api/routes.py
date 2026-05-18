@@ -6,9 +6,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from themis.api.auth import require_auth
-from themis.api.dependencies import get_analyzer, get_case_analyzer, get_generated_petition_repo, get_history_repo, get_petition_generator
-from themis.infra.repositories import HistoryRepository
+from themis.api.dependencies import get_analyzer, get_case_analysis_repo, get_case_analyzer, get_generated_petition_repo, get_history_repo, get_petition_generator
+from themis.infra.repositories import CaseAnalysisRepository, HistoryRepository
 from themis.models.responses import (
+    CaseAnalysisHistoryEntry,
+    CaseAnalysisHistoryResponse,
     CaseAnalysisResponse,
     GeneratedPetitionHistoryEntry,
     GeneratedPetitionHistoryResponse,
@@ -125,6 +127,17 @@ async def analyze_case_test_route(
 
     asyncio.create_task(_mock())
     return {"job_id": job_id}
+
+
+@router.get("/case-analysis-history", response_model=CaseAnalysisHistoryResponse)
+async def get_case_analysis_history_route(
+    token: dict = Depends(require_auth),
+    case_repo: CaseAnalysisRepository = Depends(get_case_analysis_repo),
+):
+    docs = case_repo.find_by_user(token.get("userId"))
+    return CaseAnalysisHistoryResponse(
+        history=[CaseAnalysisHistoryEntry.from_document(d) for d in docs],
+    )
 
 
 @router.post("/generate")
