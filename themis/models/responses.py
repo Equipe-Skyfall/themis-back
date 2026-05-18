@@ -108,6 +108,34 @@ class CaseAnalysisResponse(BaseModel):
         )
 
 
+class CaseAnalysisHistoryEntry(BaseModel):
+    id: str
+    filename: str
+    timestamp: datetime
+    case_summary: str
+    documents: list[DocumentSegmentResponse]
+    petition_summary: str | None = None
+    precedent_results: list[PrecedentResult] = []
+    minuta: str | None = None
+
+    @classmethod
+    def from_document(cls, doc: dict) -> "CaseAnalysisHistoryEntry":
+        return cls(
+            id=str(doc["_id"]),
+            filename=doc["filename"],
+            timestamp=doc["timestamp"],
+            case_summary=doc.get("case_summary", ""),
+            documents=doc.get("documents", []),
+            petition_summary=doc.get("petition_summary"),
+            precedent_results=doc.get("precedent_results", []),
+            minuta=doc.get("minuta"),
+        )
+
+
+class CaseAnalysisHistoryResponse(BaseModel):
+    history: list[CaseAnalysisHistoryEntry]
+
+
 # ── Petition generation ──────────────────────────────────────────────────────
 
 
