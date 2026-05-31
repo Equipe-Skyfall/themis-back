@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 from enum import Enum
 
 from google import genai
@@ -132,6 +133,29 @@ async def _prepare_pdf_part(client: genai.Client, pdf_bytes: bytes) -> types.Par
     return types.Part.from_uri(file_uri=uploaded.uri, mime_type=uploaded.mime_type)
 
 
+async def _prepare_pdf_part_from_path(client: genai.Client, path: str) -> types.Part:
+    """Like _prepare_pdf_part but reads from a file path, avoiding large bytes in memory."""
+    file_size = os.path.getsize(path)
+    if file_size <= _INLINE_MAX_BYTES:
+        with open(path, "rb") as f:
+            return types.Part.from_bytes(data=f.read(), mime_type="application/pdf")
+
+    logger.info("PDF is %d MB, uploading via File API.", file_size // (1024 * 1024))
+    with open(path, "rb") as f:
+        uploaded = client.files.upload(
+            file=f,
+            config=types.UploadFileConfig(mime_type="application/pdf"),
+        )
+    while uploaded.state.name == "PROCESSING":
+        logger.info("File still processing, waiting...")
+        await asyncio.sleep(5)
+        uploaded = client.files.get(name=uploaded.name)
+    if uploaded.state.name == "FAILED":
+        raise RuntimeError(f"Gemini file processing failed: {uploaded.name}")
+    logger.info("File ready: %s", uploaded.name)
+    return types.Part.from_uri(file_uri=uploaded.uri, mime_type=uploaded.mime_type)
+
+
 _gemini_retry = retry(
     retry=retry_if_exception_type(ServerError),
     stop=stop_after_attempt(3),
@@ -146,6 +170,31 @@ _gemini_retry = retry(
 @_gemini_retry
 async def analyze_pdf(client: genai.Client, model: str, pdf_bytes: bytes) -> dict:
     pdf_part = await _prepare_pdf_part(client, pdf_bytes)
+
+    response = await client.aio.models.generate_content(
+        model=model,
+        contents=[
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=_SEGMENTATION_PROMPT),
+                    pdf_part,
+                ],
+            ),
+        ],
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            response_mime_type="application/json",
+            response_schema=CaseAnalysisSchema,
+            max_output_tokens=65536,
+        ),
+    )
+    return _parse_json(response.text)
+
+
+@_gemini_retry
+async def analyze_pdf_path(client: genai.Client, model: str, path: str) -> dict:
+    pdf_part = await _prepare_pdf_part_from_path(client, path)
 
     response = await client.aio.models.generate_content(
         model=model,
@@ -325,6 +374,28 @@ async def generate_minuta(
 @_gemini_retry
 async def summarize_petition_pdf(client: genai.Client, model: str, pdf_bytes: bytes) -> str:
     pdf_part = await _prepare_pdf_part(client, pdf_bytes)
+    response = await client.aio.models.generate_content(
+        model=model,
+        contents=[
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=_PETITION_SUMMARY_PROMPT),
+                    pdf_part,
+                ],
+            ),
+        ],
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=4096,
+        ),
+    )
+    return response.text
+
+
+@_gemini_retry
+async def summarize_petition_pdf_path(client: genai.Client, model: str, path: str) -> str:
+    pdf_part = await _prepare_pdf_part_from_path(client, path)
     response = await client.aio.models.generate_content(
         model=model,
         contents=[

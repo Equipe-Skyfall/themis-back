@@ -1,3 +1,5 @@
+import tempfile
+
 import fitz
 
 
@@ -19,3 +21,31 @@ def split_pdf(pdf_bytes: bytes, start_page: int, end_page: int) -> bytes:
         result = dst.tobytes()
         dst.close()
         return result
+
+
+# ── Path-based variants (lower memory, for large PDFs) ───────────────────────
+
+
+def page_count_path(path: str) -> int:
+    with fitz.open(path) as doc:
+        return len(doc)
+
+
+def extract_text_path(path: str) -> str:
+    with fitz.open(path) as doc:
+        return "\n".join(page.get_text() for page in doc).strip()
+
+
+def split_pdf_to_path(src_path: str, start_page: int, end_page: int) -> str:
+    """Extract pages to a new temp file. Returns the temp file path.
+
+    Caller is responsible for deleting the returned file.
+    """
+    with fitz.open(src_path) as src:
+        dst = fitz.open()
+        dst.insert_pdf(src, from_page=start_page - 1, to_page=end_page - 1)
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        dst.save(tmp.name)
+        dst.close()
+        tmp.close()
+        return tmp.name
