@@ -5,6 +5,7 @@ import logging
 import os
 from enum import Enum
 
+import httpx
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
@@ -157,11 +158,11 @@ async def _prepare_pdf_part_from_path(client: genai.Client, path: str) -> types.
 
 
 _gemini_retry = retry(
-    retry=retry_if_exception_type(ServerError),
+    retry=retry_if_exception_type((ServerError, httpx.RemoteProtocolError)),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=5, max=60),
     before_sleep=lambda rs: logger.warning(
-        "Gemini 503, retrying (attempt %d)...", rs.attempt_number,
+        "Gemini error, retrying (attempt %d)...", rs.attempt_number,
     ),
     reraise=True,
 )

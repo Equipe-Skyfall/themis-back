@@ -27,12 +27,8 @@ def split_pdf(pdf_bytes: bytes, start_page: int, end_page: int) -> bytes:
 
 
 def page_count_path(path: str) -> int:
-    import pikepdf
-
-    pdf = pikepdf.Pdf.open(path)
-    count = len(pdf.pages)
-    pdf.close()
-    return count
+    with fitz.open(path) as doc:
+        return len(doc)
 
 
 def extract_text_path(path: str) -> str:
@@ -41,18 +37,16 @@ def extract_text_path(path: str) -> str:
 
 
 def split_pdf_to_path(src_path: str, start_page: int, end_page: int) -> str:
-    """Extract pages to a new temp file using pikepdf (no image decompression).
+    """Extract pages to a new temp file. Returns the temp file path.
 
     Caller is responsible for deleting the returned file.
     """
-    import pikepdf
-
-    pdf = pikepdf.Pdf.open(src_path)
-    dst = pikepdf.Pdf.new()
-    dst.pages.extend(pdf.pages[start_page - 1:end_page])
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    dst.save(tmp.name)
-    dst.close()
-    pdf.close()
-    tmp.close()
+    with fitz.open(src_path) as src:
+        dst = fitz.open()
+        dst.insert_pdf(src, from_page=start_page - 1, to_page=end_page - 1)
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        dst.save(tmp.name)
+        dst.close()
+        tmp.close()
+    fitz.TOOLS.store_shrink(100)
     return tmp.name

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import resource
 import tempfile
 
 from google import genai
@@ -65,7 +66,9 @@ class CaseAnalyzer:
         filename: str | None,
     ) -> CaseAnalysisResult:
         # 1. Segment the case
+        _log_mem("start")
         total_pages = page_count_path(pdf_path)
+        _log_mem("after page_count")
         logger.info("Case PDF has %d pages (max per request: %d)", total_pages, MAX_PAGES_PER_REQUEST)
 
         if total_pages <= MAX_PAGES_PER_REQUEST:
@@ -87,6 +90,7 @@ class CaseAnalyzer:
             for doc in segmentation.get("documents", [])
         ]
 
+        _log_mem("after segmentation")
         result = CaseAnalysisResult(
             case_summary=segmentation.get("case_summary", ""),
             documents=documents,
@@ -102,6 +106,7 @@ class CaseAnalyzer:
             return result
 
         petition_path = split_pdf_to_path(pdf_path, petition_segment.start_page, petition_segment.end_page)
+        _log_mem("after petition split")
         try:
             petition_text = extract_text_path(petition_path)
             logger.info(
@@ -117,6 +122,7 @@ class CaseAnalyzer:
         finally:
             _safe_remove(petition_path)
 
+        _log_mem("after summarize + search")
         result.petition_summary = summary_result
         result.precedents = [
             p for p in precedents
@@ -241,15 +247,19 @@ class CaseAnalyzer:
             return [result]
 
         mid = total_pages // 2
+
         first_path = split_pdf_to_path(pdf_path, 1, mid)
-        second_path = split_pdf_to_path(pdf_path, mid + 1, total_pages)
+        _log_mem(f"after split batch 1 (pages 1-{mid})")
         try:
-            first_batches, second_batches = await asyncio.gather(
-                self._collect_batches(first_path, mid, page_offset),
-                self._collect_batches(second_path, total_pages - mid, page_offset + mid),
-            )
+            first_batches = await self._collect_batches(first_path, mid, page_offset)
         finally:
             _safe_remove(first_path)
+
+        second_path = split_pdf_to_path(pdf_path, mid + 1, total_pages)
+        _log_mem(f"after split batch 2 (pages {mid+1}-{total_pages})")
+        try:
+            second_batches = await self._collect_batches(second_path, total_pages - mid, page_offset + mid)
+        finally:
             _safe_remove(second_path)
 
         return first_batches + second_batches
@@ -264,3 +274,8 @@ def _safe_remove(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
+
+
+def _log_mem(label: str) -> None:
+    mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    logger.info("[MEMORY] %s: %.0f MB (peak RSS)", label, mb)
