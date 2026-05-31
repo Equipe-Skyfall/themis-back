@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -104,3 +106,46 @@ class Judgment:
         if not 0 <= score <= 10:
             return None
         return index, cls(label=cls._score_to_label(score), score=score, explanation=explanation)
+
+
+# ── Case analysis ─────────────────────────────────────────────────────────────
+
+DOCUMENT_TYPES = [
+    "peticao_inicial",
+    "contestacao",
+    "replica",
+    "sentenca",
+    "apelacao",
+    "contrarrazoes",
+]
+
+
+@dataclass(kw_only=True)
+class DocumentSegment:
+    type: str
+    title: str
+    start_page: int
+    end_page: int
+    summary: str
+
+
+@dataclass(kw_only=True)
+class CaseAnalysisResult:
+    case_summary: str
+    documents: list[DocumentSegment]
+    total_pages: int
+    petition_summary: str | None = None
+    precedents: list[RankedPrecedent] = field(default_factory=list)
+    minuta: str | None = None
+    weak_precedents: bool = False
+
+
+# ── Petition generation ──────────────────────────────────────────────────────
+
+
+@dataclass(kw_only=True)
+class GeneratedPetition:
+    case_description: str
+    petition_text: str
+    precedents: list[RankedPrecedent] = field(default_factory=list)
+    weak_precedents: bool = False

@@ -11,6 +11,7 @@ from themis.infra.settings import (
     GEMINI_JUDGE_MODEL,
     GEMINI_QUERY_MODEL,
     GROQ_API_KEY,
+    GROQ_GENERATION_MODEL,
     GROQ_JUDGE_MODEL,
     GROQ_QUERY_MODEL,
     JUDGE_MODEL,
@@ -180,3 +181,10 @@ def get_summary_provider() -> ChatProvider | None:
     if "groq" not in _REGISTRY:
         return None
     return _REGISTRY["groq"][0]
+
+
+def get_generation_provider() -> ChatProvider:
+    if GROQ_API_KEY:
+        groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+        return OpenAICompatibleChat(groq_client, GROQ_GENERATION_MODEL, name="groq")
+    return _REGISTRY[PROVIDER][0]

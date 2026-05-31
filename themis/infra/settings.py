@@ -46,6 +46,7 @@ JUDGE_MODEL = os.environ["JUDGE_MODEL"]
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_QUERY_MODEL = os.getenv("GROQ_QUERY_MODEL", "llama-3.1-8b-instant")
 GROQ_JUDGE_MODEL = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+GROQ_GENERATION_MODEL = os.getenv("GROQ_GENERATION_MODEL", "llama-3.3-70b-versatile")
 
 # ── Embedding provider ─────────────────────────────────────────────────────────
 # EMBEDDING_MODEL is used by OpenAI; Gemini model is controlled separately.
@@ -75,3 +76,9 @@ AI_STUDIO_API_KEY = os.getenv("AI_STUDIO_API_KEY")
 GEMINI_QUERY_MODEL = os.getenv("GEMINI_QUERY_MODEL", "gemini-2.0-flash")
 GEMINI_JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", "gemini-2.0-flash")
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2-preview")
+GEMINI_CASE_MODEL = os.getenv("GEMINI_CASE_MODEL", "gemini-2.5-flash")
+
+# ── Supabase Storage ──────────────────────────────────────────────────────────
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")

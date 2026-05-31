@@ -10,3 +10,4 @@ PyJWT
 tenacity
 google-genai>=1.73.0
 qdrant-client>=1.13.0
+supabase>=2.0.0

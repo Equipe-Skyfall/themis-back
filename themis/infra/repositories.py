@@ -41,6 +41,44 @@ class HistoryRepository:
         )
 
 
+class CaseAnalysisRepository:
+    def __init__(self, collection):
+        self._collection = collection
+
+    def save(
+        self,
+        user_id: str,
+        filename: str,
+        case_summary: str,
+        documents: list[dict],
+        petition_summary: str | None,
+        precedent_results: list[dict],
+        minuta: str | None = None,
+    ) -> str:
+        inserted = self._collection.insert_one({
+            "userId": user_id,
+            "filename": filename,
+            "timestamp": datetime.now(timezone.utc),
+            "case_summary": case_summary,
+            "documents": documents,
+            "petition_summary": petition_summary,
+            "precedent_results": precedent_results,
+            "minuta": minuta,
+        })
+        return str(inserted.inserted_id)
+
+    def find_by_user(self, user_id: str) -> list[dict]:
+        return list(
+            self._collection
+            .find({"userId": user_id})
+            .sort("timestamp", -1)
+        )
+
+    def find_random(self) -> dict | None:
+        results = list(self._collection.aggregate([{"$sample": {"size": 1}}]))
+        return results[0] if results else None
+
+
 class QdrantPrecedentRepository:
     def __init__(self, client, collection_name: str):
         self._client = client
@@ -65,6 +103,30 @@ class QdrantPrecedentRepository:
                 cosine_similarity=r.score,
             )
             for r in response.points
+        ]
+
+    def find_by_ids(self, ids: list[str]) -> list[RetrievedPrecedent]:
+        from qdrant_client import models
+        results = self._client.scroll(
+            collection_name=self._collection,
+            scroll_filter=models.Filter(
+                must=[models.FieldCondition(key="id", match=models.MatchAny(any=ids))],
+            ),
+            with_payload=True,
+            limit=len(ids),
+        )
+        return [
+            RetrievedPrecedent(
+                id=r.payload["id"],
+                tipo=r.payload.get("tipo"),
+                orgao=r.payload.get("orgao"),
+                situacao=r.payload.get("situacao"),
+                tese=r.payload.get("tese"),
+                questao=r.payload.get("questao"),
+                textoEmenta=r.payload.get("textoEmenta"),
+                cosine_similarity=0.0,
+            )
+            for r in results[0]
         ]
 
 
@@ -99,3 +161,50 @@ class MongoAtlasPrecedentRepository:
             )
             for doc in self._collection.aggregate(pipeline)
         ]
+
+    def find_by_ids(self, ids: list[str]) -> list[RetrievedPrecedent]:
+        docs = self._collection.find({"id": {"$in": ids}}, {"embedding": 0})
+        return [
+            RetrievedPrecedent(
+                id=doc["id"],
+                tipo=doc.get("tipo"),
+                orgao=doc.get("orgao"),
+                situacao=doc.get("situacao"),
+                tese=doc.get("tese"),
+                questao=doc.get("questao"),
+                textoEmenta=doc.get("textoEmenta"),
+                textoDecisao=doc.get("textoDecisao"),
+                cosine_similarity=0.0,
+            )
+            for doc in docs
+        ]
+
+
+class GeneratedPetitionRepository:
+    def __init__(self, collection):
+        self._collection = collection
+
+    def save(
+        self,
+        user_id: str,
+        case_description: str,
+        petition_text: str,
+        precedent_results: list[dict],
+        weak_precedents: bool = False,
+        instructions: str | None = None,
+    ) -> str:
+        inserted = self._collection.insert_one({
+            "userId": user_id,
+            "timestamp": datetime.now(timezone.utc),
+            "case_description": case_description,
+            "petition_text": petition_text,
+            "precedent_results": precedent_results,
+            "weak_precedents": weak_precedents,
+            "instructions": instructions,
+        })
+        return str(inserted.inserted_id)
+
+    def find_by_user(self, user_id: str) -> list[dict]:
+        return list(
+            self._collection.find({"userId": user_id}).sort("timestamp", -1)
+        )
