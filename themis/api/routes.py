@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import tempfile
 import uuid
 from typing import Annotated
 
@@ -70,16 +71,22 @@ async def analyze_case_route(
         raise HTTPException(status_code=400, detail="File must be a PDF.")
 
     job_id = uuid.uuid4().hex
-    pdf_bytes = await file.read()
     user_id = token.get("userId")
     filename = file.filename
+
+    # Save upload to temp file to avoid holding large PDFs in memory
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    while chunk := await file.read(1024 * 1024):
+        tmp.write(chunk)
+    tmp.close()
+    pdf_path = tmp.name
 
     _jobs[job_id] = {"status": "processing"}
 
     async def _run():
         try:
             result = await case_analyzer.analyze(
-                pdf_bytes, user_id=user_id, filename=filename,
+                pdf_path, user_id=user_id, filename=filename,
             )
             _jobs[job_id] = {
                 "status": "done",

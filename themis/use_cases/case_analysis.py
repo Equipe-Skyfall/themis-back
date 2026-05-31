@@ -1,14 +1,16 @@
 import asyncio
 import logging
+import os
+import tempfile
 
 from google import genai
 
 from themis.infra.gemini_case import (
     MAX_PAGES_PER_REQUEST,
-    analyze_pdf,
+    analyze_pdf_path,
     generate_minuta,
     merge_batch_results,
-    summarize_petition_pdf,
+    summarize_petition_pdf_path,
 )
 from themis.infra.settings import CANDIDATES, JUDGE_PROMPT, QUERY_PROMPT, USE_JSON_JUDGE
 from themis.interfaces.embeddings import EmbeddingProvider
@@ -18,7 +20,7 @@ from themis.interfaces.repositories import PrecedentRepository
 from themis.models.domain import CaseAnalysisResult, DocumentSegment, RankedPrecedent
 from themis.models.responses import PrecedentResult
 from themis.services.judge import judge_and_rank
-from themis.services.pdf import extract_text, page_count, split_pdf
+from themis.services.pdf import extract_text_path, page_count_path, split_pdf_to_path
 from themis.services.retrieval import vector_search
 
 logger = logging.getLogger(__name__)
@@ -47,19 +49,30 @@ class CaseAnalyzer:
 
     async def analyze(
         self,
-        pdf_bytes: bytes,
+        pdf_path: str,
         user_id: str | None = None,
         filename: str | None = None,
     ) -> CaseAnalysisResult:
+        try:
+            return await self._analyze_impl(pdf_path, user_id, filename)
+        finally:
+            _safe_remove(pdf_path)
+
+    async def _analyze_impl(
+        self,
+        pdf_path: str,
+        user_id: str | None,
+        filename: str | None,
+    ) -> CaseAnalysisResult:
         # 1. Segment the case
-        total_pages = page_count(pdf_bytes)
+        total_pages = page_count_path(pdf_path)
         logger.info("Case PDF has %d pages (max per request: %d)", total_pages, MAX_PAGES_PER_REQUEST)
 
         if total_pages <= MAX_PAGES_PER_REQUEST:
-            segmentation = await analyze_pdf(self._client, self._model, pdf_bytes)
+            segmentation = await analyze_pdf_path(self._client, self._model, pdf_path)
         else:
             logger.info("PDF exceeds page limit, splitting into batches.")
-            batch_results = await self._collect_batches(pdf_bytes, total_pages, page_offset=0)
+            batch_results = await self._collect_batches(pdf_path, total_pages, page_offset=0)
             logger.info("Got %d batch results, merging...", len(batch_results))
             segmentation = await merge_batch_results(self._client, self._model, batch_results)
 
@@ -88,19 +101,21 @@ class CaseAnalyzer:
             logger.warning("No petição inicial found in segmentation.")
             return result
 
-        petition_pdf = split_pdf(pdf_bytes, petition_segment.start_page, petition_segment.end_page)
-        del pdf_bytes
-        petition_text = extract_text(petition_pdf)
-        logger.info(
-            "Extracted petição inicial (pages %d-%d, %d chars).",
-            petition_segment.start_page, petition_segment.end_page, len(petition_text),
-        )
+        petition_path = split_pdf_to_path(pdf_path, petition_segment.start_page, petition_segment.end_page)
+        try:
+            petition_text = extract_text_path(petition_path)
+            logger.info(
+                "Extracted petição inicial (pages %d-%d, %d chars).",
+                petition_segment.start_page, petition_segment.end_page, len(petition_text),
+            )
 
-        # 3. Summarize petition + search precedents in parallel
-        summary_result, precedents = await asyncio.gather(
-            self._summarize_petition(petition_pdf),
-            asyncio.to_thread(self._search_and_judge, petition_text),
-        )
+            # 3. Summarize petition + search precedents in parallel
+            summary_result, precedents = await asyncio.gather(
+                self._summarize_petition(petition_path),
+                asyncio.to_thread(self._search_and_judge, petition_text),
+            )
+        finally:
+            _safe_remove(petition_path)
 
         result.petition_summary = summary_result
         result.precedents = [
@@ -183,9 +198,9 @@ class CaseAnalyzer:
             logger.exception("Failed to generate minuta.")
             return ""
 
-    async def _summarize_petition(self, petition_pdf: bytes) -> str:
+    async def _summarize_petition(self, petition_path: str) -> str:
         try:
-            return await summarize_petition_pdf(self._client, self._model, petition_pdf)
+            return await summarize_petition_pdf_path(self._client, self._model, petition_path)
         except Exception:
             logger.exception("Failed to summarize petition.")
             return ""
@@ -215,10 +230,10 @@ class CaseAnalyzer:
         return ranked
 
     async def _collect_batches(
-        self, pdf_bytes: bytes, total_pages: int, page_offset: int,
+        self, pdf_path: str, total_pages: int, page_offset: int,
     ) -> list[dict]:
         if total_pages <= MAX_PAGES_PER_REQUEST:
-            result = await analyze_pdf(self._client, self._model, pdf_bytes)
+            result = await analyze_pdf_path(self._client, self._model, pdf_path)
             if page_offset > 0:
                 for doc in result.get("documents", []):
                     doc["start_page"] += page_offset
@@ -226,15 +241,27 @@ class CaseAnalyzer:
             return [result]
 
         mid = total_pages // 2
-        first_half = split_pdf(pdf_bytes, 1, mid)
-        first_batches = await self._collect_batches(first_half, mid, page_offset)
-        del first_half
+        first_path = split_pdf_to_path(pdf_path, 1, mid)
+        try:
+            first_batches = await self._collect_batches(first_path, mid, page_offset)
+        finally:
+            _safe_remove(first_path)
 
-        second_half = split_pdf(pdf_bytes, mid + 1, total_pages)
-        second_batches = await self._collect_batches(second_half, total_pages - mid, page_offset + mid)
-        del second_half
+        second_path = split_pdf_to_path(pdf_path, mid + 1, total_pages)
+        try:
+            second_batches = await self._collect_batches(second_path, total_pages - mid, page_offset + mid)
+        finally:
+            _safe_remove(second_path)
 
         return first_batches + second_batches
 
     def extract_segment(self, pdf_bytes: bytes, segment: DocumentSegment) -> bytes:
+        from themis.services.pdf import split_pdf
         return split_pdf(pdf_bytes, segment.start_page, segment.end_page)
+
+
+def _safe_remove(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
