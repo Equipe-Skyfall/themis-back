@@ -74,17 +74,17 @@ async def analyze_case_route(
     user_id = token.get("userId")
     filename = file.filename
 
-    # Save upload to temp file to avoid holding large PDFs in memory
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    while chunk := await file.read(1024 * 1024):
-        tmp.write(chunk)
-    tmp.close()
-    pdf_path = tmp.name
-
     _jobs[job_id] = {"status": "processing"}
 
     async def _run():
         try:
+            # Save upload to temp file to avoid holding large PDFs in memory
+            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+            while chunk := await file.read(1024 * 1024):
+                tmp.write(chunk)
+            tmp.close()
+            pdf_path = tmp.name
+
             result = await case_analyzer.analyze(
                 pdf_path, user_id=user_id, filename=filename,
             )
