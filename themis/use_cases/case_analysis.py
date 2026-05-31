@@ -247,19 +247,17 @@ class CaseAnalyzer:
             return [result]
 
         mid = total_pages // 2
-
         first_path = split_pdf_to_path(pdf_path, 1, mid)
         _log_mem(f"after split batch 1 (pages 1-{mid})")
-        try:
-            first_batches = await self._collect_batches(first_path, mid, page_offset)
-        finally:
-            _safe_remove(first_path)
-
         second_path = split_pdf_to_path(pdf_path, mid + 1, total_pages)
         _log_mem(f"after split batch 2 (pages {mid+1}-{total_pages})")
         try:
-            second_batches = await self._collect_batches(second_path, total_pages - mid, page_offset + mid)
+            first_batches, second_batches = await asyncio.gather(
+                self._collect_batches(first_path, mid, page_offset),
+                self._collect_batches(second_path, total_pages - mid, page_offset + mid),
+            )
         finally:
+            _safe_remove(first_path)
             _safe_remove(second_path)
 
         return first_batches + second_batches
