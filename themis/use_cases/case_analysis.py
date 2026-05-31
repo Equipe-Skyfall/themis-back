@@ -89,6 +89,7 @@ class CaseAnalyzer:
             return result
 
         petition_pdf = split_pdf(pdf_bytes, petition_segment.start_page, petition_segment.end_page)
+        del pdf_bytes
         petition_text = extract_text(petition_pdf)
         logger.info(
             "Extracted petição inicial (pages %d-%d, %d chars).",
@@ -226,12 +227,12 @@ class CaseAnalyzer:
 
         mid = total_pages // 2
         first_half = split_pdf(pdf_bytes, 1, mid)
-        second_half = split_pdf(pdf_bytes, mid + 1, total_pages)
+        first_batches = await self._collect_batches(first_half, mid, page_offset)
+        del first_half
 
-        first_batches, second_batches = await asyncio.gather(
-            self._collect_batches(first_half, mid, page_offset),
-            self._collect_batches(second_half, total_pages - mid, page_offset + mid),
-        )
+        second_half = split_pdf(pdf_bytes, mid + 1, total_pages)
+        second_batches = await self._collect_batches(second_half, total_pages - mid, page_offset + mid)
+        del second_half
 
         return first_batches + second_batches
 
